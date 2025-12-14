@@ -1,0 +1,2 @@
+include:
+  - local: templates/sync_to_github.yml

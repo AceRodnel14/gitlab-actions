@@ -1,0 +1,6 @@
+.docker_cleanup:
+  script:
+    - echo "Cleaning up Docker unused data..."
+    - docker system prune -af --volumes
+  tags:
+    - shell

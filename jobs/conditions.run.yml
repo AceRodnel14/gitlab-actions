@@ -1,0 +1,8 @@
+.dont_run_when_github_sync:
+  rules:
+    # ===== Prevent GitLab ↔ GitHub loop =====
+    - if: '$CI_COMMIT_MESSAGE =~ /^.SyncWithGitHub/'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+      when: on_success
+    - when: never
