@@ -1,6 +1,6 @@
 include:
   - local: jobs/conditions.run.yml
-  - local: jobs/docker.cleanup.yml
+  - local: jobs/docker.yml
   - local: jobs/sync.github.yml
 
 stages:
@@ -10,7 +10,7 @@ stages:
 sync_to_github:
   extends: 
     - .sync_to_github
-    - .dont_run_when_github_sync
+    - .dont_run_when_github_sync_and_tagged
   stage: sync
 
 docker_cleanup:
