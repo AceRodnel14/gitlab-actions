@@ -13,6 +13,12 @@ check_container_build:
     - .dont_run_when_github_sync
   stage: validate
 
+check_docker_compose_file:
+  extends:
+    - .docker_validate_compose_file
+    - .dont_run_when_github_sync
+  stage: validate
+
 create_gitlab_container_image:
   extends:
     - .docker_login_gitlab
