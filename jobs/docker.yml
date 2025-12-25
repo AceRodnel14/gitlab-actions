@@ -7,18 +7,18 @@
 
 .docker_validate_build:
   script:
+    - docker build --check .
+  tags:
+    - shell
+
+.docker_validate_compose_file:
+  script:
     - |
       if [ -f docker-compose.yml ]; then
         docker compose config && echo "OK" || (echo "ERROR" && exit 1)
       else
         echo "No docker-compose.yml found, skipping"
       fi
-  tags:
-    - shell
-
-.docker_validate_compose_file:
-  script:
-    - docker compose config && echo "OK" || (echo "ERROR" && exit 1)
   tags:
     - shell
 
