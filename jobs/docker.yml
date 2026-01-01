@@ -82,3 +82,22 @@
       fi
   tags:
     - shell
+
+.docker_build_container_amd64_only:
+  script:
+    - |
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        echo "Tag detected: $CI_COMMIT_TAG"
+        echo "Processing: $IMAGE_NAME:$CI_COMMIT_TAG"
+        docker build -t $IMAGE_NAME:$CI_COMMIT_TAG .
+        docker push $IMAGE_NAME:$CI_COMMIT_TAG
+      else
+        echo "No tag — branch pipeline"
+        for TAG in "${TAGS[@]}"; do
+          echo "Processing: $IMAGE_NAME:$TAG"
+          docker build -t $IMAGE_NAME:$TAG .
+          docker push $IMAGE_NAME:$TAG
+        done
+      fi
+  tags:
+    - shell
