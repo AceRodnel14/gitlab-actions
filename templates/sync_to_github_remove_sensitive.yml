@@ -1,0 +1,20 @@
+include:
+  - local: jobs/conditions.run.yml
+  - local: jobs/docker.yml
+  - local: jobs/sync.github.remove.sensitive.yml
+
+stages:
+  - sync
+  - cleanup
+
+sync_to_github:
+  extends: 
+    - .sync_to_github_remove_sensitive
+    - .dont_run_when_github_sync_and_tagged
+  stage: sync
+
+docker_cleanup:
+  extends: 
+    - .docker_cleanup
+    - .dont_run_when_github_sync
+  stage: cleanup
