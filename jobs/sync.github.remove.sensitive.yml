@@ -28,7 +28,7 @@
     - |
       if git status --porcelain | grep .; then
         git add .
-        git commit -m "[SyncWithGitLab] Sync from GitLab commit $CI_COMMIT_SHORT_SHA"
+        git commit -m "[SyncWithGitLab $CI_COMMIT_SHORT_SHA] $CI_COMMIT_MESSAGE"
         git push origin "$CI_COMMIT_REF_NAME"
       else
         echo "No changes to sync."
