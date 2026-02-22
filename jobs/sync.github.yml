@@ -6,8 +6,12 @@
     - git config --global user.name "$GITHUB_USERNAME"
   script:
     # ===== Prepare workspace =====
+    - pwd
+    - rm -rf work
     - mkdir -p work
     - cd work
+    - echo "$CI_PROJECT_NAME"
+    - echo "$CI_COMMIT_REF_NAME"
     # ===== Clone GitLab repo (lab) =====
     - git clone "$CI_REPOSITORY_URL" lab
     - cd lab
@@ -26,8 +30,8 @@
     - |
       if git status --porcelain | grep .; then
         git add .
-        git commit -m "[SyncWithGitLab $CI_COMMIT_SHORT_SHA] $CI_COMMIT_MESSAGE"
-        git push origin "$CI_COMMIT_REF_NAME"
+        git commit -m "[SyncWithGitLab $CI_COMMIT_SHORT_SHA] ${CI_COMMIT_MESSAGE%%$'\n'*}"
+        git push --force-with-lease origin "$CI_COMMIT_REF_NAME"
       else
         echo "No changes to sync."
       fi
