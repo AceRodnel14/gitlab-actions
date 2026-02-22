@@ -20,7 +20,8 @@
     # ===== Clone GitHub repo (hub) =====
     - git clone https://$GITHUB_USERNAME:$GITHUB_TOKEN@github.com/$GITHUB_SPACE/$CI_PROJECT_NAME.git hub
     - cd hub
-    - git checkout -B "$CI_COMMIT_REF_NAME" || git checkout -b "$CI_COMMIT_REF_NAME"
+    - git fetch origin
+    - git checkout "$CI_COMMIT_REF_NAME" 2>/dev/null || git checkout --track "origin/$CI_COMMIT_REF_NAME" 2>/dev/null || git checkout -b "$CI_COMMIT_REF_NAME"
     - cd ..
     # ===== Sync files lab → hub =====
     - rsync -av --delete --exclude='.git' lab/ hub/
