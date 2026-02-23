@@ -1,0 +1,36 @@
+include:
+  - local: jobs/conditions.run.yml
+  - local: jobs/docker.yml
+  - local: jobs/sync.github.yml
+
+stages:
+  - validate
+  - build
+
+check_container_build:
+  extends:
+    - .docker_validate_build
+    - .dont_run_when_github_sync
+  stage: validate
+
+check_docker_compose_file:
+  extends:
+    - .docker_validate_compose_file
+    - .dont_run_when_github_sync
+  stage: validate
+
+create_dockerhub_container_image:
+  extends:
+    - .docker_login_dockerhub
+    - .docker_build_container
+    - .dont_run_when_github_sync
+  stage: build
+  needs: ["check_container_build"]
+
+create_ghcr_container_image:
+  extends:
+    - .docker_login_ghcr
+    - .docker_build_container
+    - .dont_run_when_github_sync
+  stage: build
+  needs: ["check_container_build"]
