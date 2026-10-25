@@ -95,7 +95,7 @@
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       exists: ['**/Dockerfile', '**/Dockerfile.*', '**/*.Dockerfile']
   script:
-    - find . \( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' \) -not -path './.git/*' | xargs hadolint --failure-threshold "${HADOLINT_THRESHOLD:-error}"
+    - find . \( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' \) -not -path './.git/*' -print0 | xargs -0 hadolint --failure-threshold "${HADOLINT_THRESHOLD:-error}"
 
 # ===== Shell =====
 .lint_shell:
@@ -107,7 +107,7 @@
       exists: ['**/*.sh']
   script:
     - apk add --no-cache shellcheck
-    - find . -name '*.sh' -not -path './.git/*' -not -path '*/node_modules/*' | xargs shellcheck -S warning
+    - find . -name '*.sh' -not -path './.git/*' -not -path '*/node_modules/*' -print0 | xargs -0 shellcheck -S warning
 
 # ===== YAML (repo's own .yamllint wins; default ignores line endings/length) =====
 .lint_yaml:
