@@ -1,0 +1,12 @@
+.never_on_github_sync:
+  rules:
+    # ===== Prevent GitLab ↔ GitHub loop =====
+    - if: '$CI_COMMIT_MESSAGE =~ /^.SyncWithGitHub/'
+      when: never
+
+# Lint/test jobs: run on merge requests (incl. ai/ branches) and the default branch.
+# Each lint job adds `exists:` so it only runs when the repo has matching files.
+.run_on_merge_request:
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

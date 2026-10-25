@@ -1,0 +1,23 @@
+# Lint for infra repos (manifests, IaC). Secret scan only with a repo .gitleaks.toml: real values
+# live in GitLab-only paths and are scrubbed on the GitHub mirror (sync_to_github_remove_sensitive).
+include:
+  - local: jobs/conditions.merge_request.yml
+  - local: jobs/lint.yml
+
+stages:
+  - validate
+
+lint_yaml:
+  extends: .lint_yaml
+
+lint_kubernetes:
+  extends: .lint_kubernetes
+
+lint_shell:
+  extends: .lint_shell
+
+lint_opentofu:
+  extends: .lint_opentofu
+
+lint_secrets:
+  extends: .lint_secrets_infra

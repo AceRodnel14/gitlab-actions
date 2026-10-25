@@ -1,0 +1,212 @@
+# Lint and test jobs. Every job runs on merge requests and the default branch, and
+# only when the repo has files it checks (rules:exists). Images are multi-arch.
+# Per-repo knobs (set under `variables:` in the repo's .gitlab-ci.yml):
+#   RUFF_FORMAT=false            skip `ruff format --check`
+#   GO_PREPARE="<cmd>"           run before Go jobs (e.g. create embedded web/dist)
+#   HADOLINT_THRESHOLD=warning   fail on hadolint warnings too (default: error)
+#   KUBECONFORM_IGNORE=<regex>   files kubeconform skips
+
+.lint_base:
+  stage: validate
+  tags:
+    - docker
+
+# ===== Python =====
+.lint_python:
+  extends: .lint_base
+  image:
+    name: ghcr.io/astral-sh/uv:python3.12-alpine
+    entrypoint: [""]
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/*.py']
+  script:
+    - uvx ruff check .
+    - if [ "$RUFF_FORMAT" != "false" ]; then uvx ruff format --check .; fi
+
+.test_python:
+  extends: .lint_base
+  image:
+    name: ghcr.io/astral-sh/uv:python3.12-alpine
+    entrypoint: [""]
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['tests/**/*.py', '**/test_*.py']
+  before_script:
+    - apk add --no-cache git
+  script:
+    - |
+      if [ -f uv.lock ]; then
+        uv sync --frozen && uv run pytest
+      else
+        uv run --with pytest pytest
+      fi
+
+# ===== Go =====
+.lint_go:
+  extends: .lint_base
+  image: golangci/golangci-lint:v2.15.0
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/go.mod']
+  script:
+    - eval "${GO_PREPARE:-true}"
+    - golangci-lint run ./...
+
+.test_go:
+  extends: .lint_base
+  image: golang:1.26-alpine
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/go.mod']
+  script:
+    - eval "${GO_PREPARE:-true}"
+    - go test ./...
+
+# ===== JavaScript / TypeScript (every package.json outside node_modules) =====
+.lint_node:
+  extends: .lint_base
+  image: node:22-alpine
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/package.json']
+  script:
+    - |
+      for pkg in $(find . -name package.json -not -path '*/node_modules/*'); do
+        dir=$(dirname "$pkg")
+        echo "===== $dir ====="
+        if [ -f "$dir/package-lock.json" ]; then npm ci --prefix "$dir"; else npm install --prefix "$dir"; fi
+        for script in lint typecheck test build; do
+          npm run --if-present --prefix "$dir" "$script"
+        done
+      done
+
+# ===== Containers =====
+.lint_dockerfile:
+  extends: .lint_base
+  image: hadolint/hadolint:v2.14.0-alpine
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/Dockerfile', '**/Dockerfile.*', '**/*.Dockerfile']
+  script:
+    - find . \( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' \) -not -path './.git/*' | xargs hadolint --failure-threshold "${HADOLINT_THRESHOLD:-error}"
+
+# ===== Shell =====
+.lint_shell:
+  extends: .lint_base
+  image: alpine:3.24
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/*.sh']
+  script:
+    - apk add --no-cache shellcheck
+    - find . -name '*.sh' -not -path './.git/*' -not -path '*/node_modules/*' | xargs shellcheck -S warning
+
+# ===== YAML (repo's own .yamllint wins; default ignores line endings/length) =====
+.lint_yaml:
+  extends: .lint_base
+  image: alpine:3.24
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/*.yml', '**/*.yaml']
+  script:
+    - apk add --no-cache yamllint
+    - |
+      if ls .yamllint .yamllint.yml .yamllint.yaml > /dev/null 2>&1; then
+        yamllint .
+      else
+        yamllint -d '{extends: relaxed, ignore: [node_modules/, .git/], rules: {new-lines: disable, new-line-at-end-of-file: disable, line-length: disable, trailing-spaces: {level: warning}}}' .
+      fi
+
+# ===== Kubernetes manifests (CRD schemas from the datree catalog) =====
+.lint_kubernetes:
+  extends: .lint_base
+  image: alpine:3.24
+  variables:
+    KUBECONFORM_VERSION: v0.8.0
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/*.yml', '**/*.yaml']
+  script:
+    - ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+    - wget -qO- "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-${ARCH}.tar.gz" | tar xz -C /usr/local/bin kubeconform
+    - |
+      find . \( -name '*.yml' -o -name '*.yaml' \) -not -path './.*' -not -path '*/node_modules/*' | sed 's#^\./##' \
+        | xargs kubeconform -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -ignore-filename-pattern "${KUBECONFORM_IGNORE:-(^|/)values\.ya?ml$|^template/}"
+
+# ===== OpenTofu / Terraform (fmt for all, validate per root module) =====
+.lint_opentofu:
+  extends: .lint_base
+  image: alpine:3.24
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['**/*.tf']
+  script:
+    - apk add --no-cache opentofu
+    - tofu fmt -check -recursive -diff
+    - |
+      for dir in $(find . -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u); do
+        echo "===== $dir ====="
+        tofu -chdir="$dir" init -backend=false -input=false > /dev/null && tofu -chdir="$dir" validate
+      done
+
+# ===== Secrets =====
+# A repo's .gitleaks.toml is loaded automatically (extend the defaults and allowlist
+# GitLab-only paths there). Without one, only the sensitive-sync mapping is skipped;
+# other dotfiles (.env etc.) stay scanned on purpose.
+.lint_secrets:
+  extends: .lint_base
+  image:
+    name: zricethezav/gitleaks:v8.30.1
+    entrypoint: [""]
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - |
+      if [ -f .gitleaks.toml ]; then
+        gitleaks dir --redact --no-banner .
+      else
+        cat > /tmp/gitleaks.toml <<'EOF'
+      [extend]
+      useDefault = true
+
+      [allowlist]
+      description = "GitLab-only mapping used by sync_to_github_remove_sensitive"
+      paths = ['''(^|/)\.substitute$''']
+      EOF
+        gitleaks dir --redact --no-banner --config /tmp/gitleaks.toml .
+      fi
+
+# Infra repos keep real values in GitLab-only paths (secrets/, ssl/, ...), so they get
+# a secret scan only once they list those paths in their own .gitleaks.toml.
+.lint_secrets_infra:
+  extends: .lint_secrets
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['.gitleaks.toml']
+
+# ===== Claude Code plugin marketplaces =====
+.lint_claude_plugin:
+  extends: .lint_base
+  image: node:22-alpine
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: ['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json']
+  script:
+    - npx -y @anthropic-ai/claude-code plugin validate .

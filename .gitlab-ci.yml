@@ -1,2 +1,8 @@
 include:
+  - local: templates/lint_all.yml
   - local: templates/sync_to_github.yml
+
+stages:
+  - validate
+  - sync
+  - cleanup
