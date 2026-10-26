@@ -36,8 +36,12 @@ stages:      # declare every stage of every included template
 
 ## When jobs run
 
-- Build and sync jobs: any branch except `ai/*`, plus `latest` / `vX.Y.Z` tags; never
-  for `[SyncWithGitHub` commits (`jobs/conditions.run.yml`).
+- Build and sync jobs: any branch except `ai/*`, plus the tags `latest`, `vX.Y`
+  and `vX.Y.Z` (e.g. `v0.1`, `v0.1.0`); never for other tags or `[SyncWithGitHub` commits
+  (`jobs/conditions.run.yml`).
+- Tag pipelines push the image tagged with the release tag, and the sync job creates the
+  tag on GitHub: on the GitHub commit already synced from the tagged commit, or else on a
+  new commit (on no branch) holding its files. GitLab commits are never pushed to GitHub.
 - Lint jobs: merge request pipelines (including `ai/*` branches) and the default
   branch, and only when matching files exist (`jobs/conditions.merge_request.yml`).
 
