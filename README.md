@@ -5,6 +5,16 @@ this repo (`jobs/` = hidden building blocks, `templates/` = what repos include).
 
 ## Usage
 
+Containerized app repos include only `templates/app.yml` (it declares its own stages):
+
+```yaml
+include:
+  - project: '$CI_PROJECT_NAMESPACE/gitlab-actions'
+    file: 'templates/app.yml'
+```
+
+Other repos combine the single-purpose templates:
+
 ```yaml
 include:
   - project: '$CI_PROJECT_NAMESPACE/gitlab-actions'
@@ -25,6 +35,7 @@ stages:      # declare every stage of every included template
 
 | Template | Stages | What it does |
 | :- | :- | :- |
+| `app.yml` | validate, test, build, sync, cleanup | **Default for app repos.** Branches/MRs: lint + tests. Default branch and release tags: Dockerfile/compose checks, test build + smoke run, Docker Hub image, GitHub sync |
 | `lint_all.yml` | validate | Lint + tests for app repos (below); MRs and default branch |
 | `lint_infra.yml` | validate | YAML, Kubernetes, shell, OpenTofu lint; secret scan only with a repo `.gitleaks.toml` |
 | `build_container_images_dockerhub.yml` | validate, build | **Default.** Check Dockerfile/compose, multi-arch image to Docker Hub |
@@ -42,6 +53,12 @@ stages:      # declare every stage of every included template
 - Tag pipelines push the image tagged with the release tag, and the sync job creates the
   tag on GitHub: on the GitHub commit already synced from the tagged commit, or else on a
   new commit (on no branch) holding its files. GitLab commits are never pushed to GitHub.
+- `app.yml`: lint/tests on merge requests and pushes to other branches (not `ai/*`,
+  not a branch with an open MR); release jobs (`test_build`, image, sync, cleanup) only
+  on the default branch and release tags (`jobs/conditions.app.yml`). `test_build`
+  builds for the runner's arch, starts the container and waits for its `HEALTHCHECK`
+  to pass (or 10 s of running without one); knobs `SMOKE_RUN=false`,
+  `SMOKE_RUN_ARGS`, `SMOKE_TIMEOUT` (`jobs/smoke.yml`).
 - Lint jobs: merge request pipelines (including `ai/*` branches) and the default
   branch, and only when matching files exist (`jobs/conditions.merge_request.yml`).
 
@@ -60,7 +77,8 @@ stages:      # declare every stage of every included template
 | `lint_secrets` | always (`lint_all`); `.gitleaks.toml` (`lint_infra`) | gitleaks, redacted; repo `.gitleaks.toml` wins, default skips only `.substitute` |
 | `lint_claude_plugin` | `.claude-plugin/*.json` | `claude plugin validate` |
 
-Per-repo variables: `RUFF_FORMAT=false`, `GO_PREPARE="<cmd>"` (e.g.
+Per-repo variables: `LINT_ON_BRANCHES=true` (also lint branch pushes),
+`LINT_ON_DEFAULT_BRANCH=false` (both set by `app.yml`), `RUFF_FORMAT=false`, `GO_PREPARE="<cmd>"` (e.g.
 `mkdir -p web/dist && touch web/dist/.keep` for embedded frontends),
 `HADOLINT_THRESHOLD=warning`, `KUBECONFORM_IGNORE=<regex>`.
 To turn a job off in one repo: redefine it with `rules: [{when: never}]`.

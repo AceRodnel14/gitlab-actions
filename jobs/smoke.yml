@@ -1,0 +1,40 @@
+# Test build: build the image for the runner's own arch, start it, and pass once it is
+# healthy (Dockerfile HEALTHCHECK) or, without a HEALTHCHECK, still running after 10 s.
+# Per-repo knobs:
+#   SMOKE_RUN=false                 build only, don't start the container
+#   SMOKE_RUN_ARGS="<docker args>"  extra `docker run` args (e.g. -e APP_MODE=demo)
+#   SMOKE_TIMEOUT=<seconds>         wait limit (default 90)
+.docker_smoke_test:
+  variables:
+    SMOKE_NAME: ci-smoke-${CI_PROJECT_ID}-${CI_PIPELINE_ID}
+  script:
+    - docker build -t "$SMOKE_NAME" .
+    - |
+      if [ "$SMOKE_RUN" = "false" ]; then
+        echo "SMOKE_RUN=false: build only"
+        exit 0
+      fi
+      # shellcheck disable=SC2086 # SMOKE_RUN_ARGS is a list of args
+      docker run -d --name "$SMOKE_NAME" $SMOKE_RUN_ARGS "$SMOKE_NAME"
+      for i in $(seq 1 "${SMOKE_TIMEOUT:-90}"); do
+        status=$(docker inspect -f '{{.State.Status}}' "$SMOKE_NAME")
+        health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$SMOKE_NAME")
+        if [ "$status" != running ] || [ "$health" = unhealthy ]; then
+          echo "Container is $status $health"
+          docker logs "$SMOKE_NAME"
+          exit 1
+        fi
+        if [ "$health" = healthy ] || { [ -z "$health" ] && [ "$i" -ge 10 ]; }; then
+          echo "Smoke test passed (${health:-running, no HEALTHCHECK})"
+          exit 0
+        fi
+        sleep 1
+      done
+      echo "Timed out waiting for the container to become healthy"
+      docker logs "$SMOKE_NAME"
+      exit 1
+  after_script:
+    - docker rm -f "$SMOKE_NAME" >/dev/null 2>&1 || true
+    - docker rmi "$SMOKE_NAME" >/dev/null 2>&1 || true
+  tags:
+    - shell

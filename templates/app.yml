@@ -1,0 +1,104 @@
+# All-in-one pipeline for containerized app repos. Include only this template.
+#   Merge requests and pushes to other branches (not ai/*): lint + tests.
+#   Default branch and release tags (latest, vX.Y, vX.Y.Z): Dockerfile/compose checks,
+#   test build + smoke run, multi-arch image to Docker Hub, GitHub sync, runner cleanup.
+include:
+  - local: jobs/conditions.merge_request.yml
+  - local: jobs/conditions.app.yml
+  - local: jobs/lint.yml
+  - local: jobs/docker.yml
+  - local: jobs/smoke.yml
+  - local: jobs/sync.github.yml
+
+variables:
+  LINT_ON_BRANCHES: "true"
+  LINT_ON_DEFAULT_BRANCH: "false"
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /^.SyncWithGitHub/'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG == "latest" || $CI_COMMIT_TAG =~ /^v\d+\.\d+(\.\d+)?$/'
+    # ai/ branches and branches with an open MR are covered by the MR pipeline
+    - if: '$CI_COMMIT_BRANCH =~ /^ai\// || ($CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS)'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+
+stages:
+  - validate
+  - test
+  - build
+  - sync
+  - cleanup
+
+# ===== Branches and merge requests =====
+lint_python:
+  extends: .lint_python
+
+test_python:
+  extends: .test_python
+
+lint_go:
+  extends: .lint_go
+
+test_go:
+  extends: .test_go
+
+lint_node:
+  extends: .lint_node
+
+lint_dockerfile:
+  extends: .lint_dockerfile
+
+lint_shell:
+  extends: .lint_shell
+
+lint_yaml:
+  extends: .lint_yaml
+
+lint_opentofu:
+  extends: .lint_opentofu
+
+lint_secrets:
+  extends: .lint_secrets
+
+# ===== Default branch and release tags =====
+check_container_build:
+  extends:
+    - .docker_validate_build
+    - .app_on_release
+  stage: validate
+
+check_docker_compose_file:
+  extends:
+    - .docker_validate_compose_file
+    - .app_on_release
+  stage: validate
+
+test_build:
+  extends:
+    - .docker_smoke_test
+    - .app_on_release
+  stage: test
+
+create_dockerhub_container_image:
+  extends:
+    - .docker_login_dockerhub
+    - .docker_build_container
+    - .app_on_release
+  stage: build
+  needs: ["check_container_build", "test_build"]
+
+sync_to_github:
+  extends:
+    - .sync_to_github
+    - .app_on_release
+  stage: sync
+
+docker_cleanup:
+  extends:
+    - .docker_cleanup
+    - .app_on_release
+  stage: cleanup

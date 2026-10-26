@@ -1,6 +1,8 @@
 # Lint and test jobs. Every job runs on merge requests and the default branch, and
 # only when the repo has files it checks (rules:exists). Images are multi-arch.
 # Per-repo knobs (set under `variables:` in the repo's .gitlab-ci.yml):
+#   LINT_ON_BRANCHES=true        also run on pushes to other branches (not ai/*; app.yml)
+#   LINT_ON_DEFAULT_BRANCH=false skip the default branch (app.yml: it test-builds instead)
 #   RUFF_FORMAT=false            skip `ruff format --check`
 #   GO_PREPARE="<cmd>"           run before Go jobs (e.g. create embedded web/dist)
 #   HADOLINT_THRESHOLD=warning   fail on hadolint warnings too (default: error)
@@ -19,7 +21,11 @@
     entrypoint: [""]
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: &lint_when >-
+        $CI_PIPELINE_SOURCE == "merge_request_event"
+        || ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $LINT_ON_DEFAULT_BRANCH != "false")
+        || ($LINT_ON_BRANCHES == "true" && $CI_COMMIT_BRANCH
+        && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_COMMIT_BRANCH !~ /^ai\//)
       exists: ['**/*.py']
   script:
     - uvx ruff check .
@@ -32,7 +38,7 @@
     entrypoint: [""]
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['tests/**/*.py', '**/test_*.py']
   before_script:
     - apk add --no-cache git
@@ -50,7 +56,7 @@
   image: golangci/golangci-lint:v2.15.0
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/go.mod']
   script:
     - eval "${GO_PREPARE:-true}"
@@ -61,7 +67,7 @@
   image: golang:1.26-alpine
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/go.mod']
   script:
     - eval "${GO_PREPARE:-true}"
@@ -73,7 +79,7 @@
   image: node:22-alpine
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/package.json']
   script:
     - |
@@ -92,7 +98,7 @@
   image: hadolint/hadolint:v2.14.0-alpine
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/Dockerfile', '**/Dockerfile.*', '**/*.Dockerfile']
   script:
     - find . \( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' \) -not -path './.git/*' -print0 | xargs -0 hadolint --failure-threshold "${HADOLINT_THRESHOLD:-error}"
@@ -103,7 +109,7 @@
   image: alpine:3.24
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/*.sh']
   script:
     - apk add --no-cache shellcheck
@@ -115,7 +121,7 @@
   image: alpine:3.24
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/*.yml', '**/*.yaml']
   script:
     - apk add --no-cache yamllint
@@ -134,7 +140,7 @@
     KUBECONFORM_VERSION: v0.8.0
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/*.yml', '**/*.yaml']
   script:
     - ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
@@ -152,7 +158,7 @@
   image: alpine:3.24
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['**/*.tf']
   script:
     - apk add --no-cache opentofu
@@ -174,7 +180,7 @@
     entrypoint: [""]
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
   script:
     - |
       if [ -f .gitleaks.toml ]; then
@@ -197,7 +203,7 @@
   extends: .lint_secrets
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['.gitleaks.toml']
 
 # ===== Claude Code plugin marketplaces =====
@@ -206,7 +212,7 @@
   image: node:22-alpine
   rules:
     - !reference [.never_on_github_sync, rules]
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: *lint_when
       exists: ['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json']
   script:
     - npx -y @anthropic-ai/claude-code plugin validate .
