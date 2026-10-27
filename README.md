@@ -35,10 +35,10 @@ stages:      # declare every stage of every included template
 
 | Template | Stages | What it does |
 | :- | :- | :- |
-| `app.yml` | validate, test, build, sync, cleanup | **Default for app repos.** Branches/MRs: lint + tests. Default branch and release tags: Dockerfile/compose checks, test build + smoke run, Docker Hub image, GitHub sync |
+| `app.yml` | validate, test, build, sync, cleanup | **Default for app repos.** Branches/MRs: lint + tests. Default branch and release tags: Dockerfile/compose checks, test build + smoke run, Docker Hub image + description, GitHub sync |
 | `lint_all.yml` | validate | Lint + tests for app repos (below); MRs and default branch |
 | `lint_infra.yml` | validate | YAML, Kubernetes, shell, OpenTofu lint; secret scan only with a repo `.gitleaks.toml` |
-| `build_container_images_dockerhub.yml` | validate, build | **Default.** Check Dockerfile/compose, multi-arch image to Docker Hub |
+| `build_container_images_dockerhub.yml` | validate, build | **Default.** Check Dockerfile/compose, multi-arch image to Docker Hub, then the description from `dockerdesc.md` |
 | `build_container_images_all.yml` | validate, build | Same, to GitLab registry, Docker Hub and GHCR (kept for future use) |
 | `build_container_images_no_gitlab.yml` | validate, build | Docker Hub + GHCR (kept for future use) |
 | `build_container_images_all_amd64.yml` | validate, build | Like `_all`, amd64 only (only for amd64-only images) |
@@ -61,6 +61,24 @@ stages:      # declare every stage of every included template
   `SMOKE_RUN_ARGS`, `SMOKE_TIMEOUT` (`jobs/smoke.yml`).
 - Lint jobs: merge request pipelines (including `ai/*` branches) and the default
   branch, and only when matching files exist (`jobs/conditions.merge_request.yml`).
+
+## Docker Hub description (`dockerdesc.md`)
+
+Job `update_dockerhub_description` (stage `build`, `needs` the image job, `allow_failure`)
+sets the Docker Hub repository's full description to the `dockerdesc.md` at the app repo
+root (kept in the repo, first line links to the GitHub repo). No file: it skips with
+exit 0. Over 25000 bytes (the Docker Hub limit): it warns and skips, never truncates.
+Wired into `app.yml` and `build_container_images_dockerhub.yml`; the `_all`,
+`_no_gitlab` and `_all_amd64` templates may extend the hidden `.dockerhub_description`
+(`jobs/docker.yml`) when needed. Namespace is the lowercased `DOCKERHUB_USER`, repo is
+`CI_PROJECT_NAME`; no new CI variables.
+
+- Login: `POST /v2/auth/token` with `DOCKERHUB_USER` + `DOCKERHUB_TOKEN` (a PAT), Bearer JWT.
+- Update: `PATCH /v2/repositories/<ns>/<repo>/` with `full_description`. This endpoint is
+  undocumented (peter-evans/dockerhub-description uses it).
+- **Unverified:** that this PATCH accepts the `auth/token` JWT, and the PAT scope it
+  needs (probably Read, Write, Delete; Read & Write may not be enough). If the job
+  fails with 401/403, check the token's scope first. The job never fails the pipeline.
 
 ## Lint jobs (`jobs/lint.yml`)
 
@@ -87,3 +105,6 @@ To turn a job off in one repo: redefine it with `rules: [{when: never}]`.
 
 `GITHUB_USERNAME`, `GITHUB_EMAIL`, `GITHUB_TOKEN`, `GITHUB_SPACE`, `DOCKERHUB_USER`,
 `DOCKERHUB_TOKEN`. Runner tags: `docker` (container jobs), `shell` (host Docker).
+
+---
+_Developed with assistance from Claude (Claude Opus 5.5)._

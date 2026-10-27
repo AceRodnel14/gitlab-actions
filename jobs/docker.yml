@@ -47,6 +47,45 @@
   after_script:
     - docker logout
 
+# Sets the Docker Hub repository's full description from dockerdesc.md (app repo root).
+# Skips (exit 0) without the file or when it exceeds 25000 bytes; never truncates.
+# Auth: POST /v2/auth/token (PAT in DOCKERHUB_TOKEN) -> Bearer JWT, per the Docker Hub
+# API spec. The update uses the undocumented PATCH /v2/repositories/<ns>/<repo>/
+# (as peter-evans/dockerhub-description does). UNVERIFIED: that this PATCH accepts the
+# auth/token JWT, and which PAT scope it needs (likely Read, Write, Delete).
+# allow_failure: a failed description must never fail the pipeline.
+.dockerhub_description:
+  image: alpine:3.24
+  tags:
+    - docker
+  allow_failure: true
+  script:
+    - |
+      if [ ! -f dockerdesc.md ]; then echo "No dockerdesc.md, skipping"; exit 0; fi
+      SIZE=$(wc -c < dockerdesc.md)
+      if [ "$SIZE" -gt 25000 ]; then echo "WARNING: dockerdesc.md is ${SIZE} bytes (max 25000), skipping"; exit 0; fi
+      apk add --no-cache curl jq > /dev/null
+      NS=$(printf '%s' "${DOCKERHUB_USER}" | tr '[:upper:]' '[:lower:]')
+      API="https://hub.docker.com/v2"
+      WORK=$(mktemp -d)
+      trap 'rm -rf "$WORK"' EXIT
+      if ! jq -n --arg u "${DOCKERHUB_USER}" --arg s "${DOCKERHUB_TOKEN}" '{identifier: $u, secret: $s}' |
+        curl -sS --fail-with-body -o "$WORK/auth.json" -w '%{http_code}' -X POST \
+          -H "Content-Type: application/json" --data @- "${API}/auth/token" > "$WORK/auth.status"; then
+        echo "Docker Hub login failed (HTTP $(cat "$WORK/auth.status")):"; cat "$WORK/auth.json"; exit 1
+      fi
+      echo "Docker Hub login: HTTP $(cat "$WORK/auth.status")"
+      umask 077
+      printf 'Authorization: Bearer %s\n' "$(jq -r .access_token "$WORK/auth.json")" > "$WORK/auth.header"
+      if ! jq -n --rawfile d dockerdesc.md '{full_description: $d}' |
+        curl -sS --fail-with-body -o "$WORK/patch.json" -w '%{http_code}' -X PATCH \
+          -H "Content-Type: application/json" -H @"$WORK/auth.header" --data @- \
+          "${API}/repositories/${NS}/${CI_PROJECT_NAME}/" > "$WORK/patch.status"; then
+        echo "Updating the description of ${NS}/${CI_PROJECT_NAME} failed (HTTP $(cat "$WORK/patch.status")):"; cat "$WORK/patch.json"; exit 1
+      fi
+      echo "Updated the description of ${NS}/${CI_PROJECT_NAME}: HTTP $(cat "$WORK/patch.status")"
+
+
 .docker_login_ghcr:
   before_script:
     - echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_SPACE}" --password-stdin

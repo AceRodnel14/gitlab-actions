@@ -91,6 +91,13 @@ create_dockerhub_container_image:
   stage: build
   needs: ["check_container_build", "test_build"]
 
+update_dockerhub_description:
+  extends:
+    - .dockerhub_description
+    - .app_on_release
+  stage: build
+  needs: ["create_dockerhub_container_image"]
+
 sync_to_github:
   extends:
     - .sync_to_github

@@ -26,3 +26,10 @@ create_dockerhub_container_image:
     - .dont_run_when_github_sync
   stage: build
   needs: ["check_container_build"]
+
+update_dockerhub_description:
+  extends:
+    - .dockerhub_description
+    - .dont_run_when_github_sync
+  stage: build
+  needs: ["create_dockerhub_container_image"]
