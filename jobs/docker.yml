@@ -94,6 +94,7 @@
       TAGS=(
         "${CI_COMMIT_BRANCH}-${DATE}"
         "${CI_COMMIT_BRANCH}"
+        "latest"
       )
     - IMAGE_NAME="ghcr.io/$(echo ${GITHUB_SPACE} | tr '[:upper:]' '[:lower:]')/${CI_PROJECT_NAME}"
   after_script:
