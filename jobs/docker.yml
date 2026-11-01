@@ -15,7 +15,7 @@
   script:
     - |
       if [ -f docker-compose.yml ]; then
-        docker compose config && echo "OK" || (echo "ERROR" && exit 1)
+        POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-ci-placeholder}" docker compose config -q && echo "OK" || (echo "ERROR" && exit 1)
       else
         echo "No docker-compose.yml found, skipping"
       fi
