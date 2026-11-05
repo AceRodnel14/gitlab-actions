@@ -42,6 +42,7 @@
       TAGS=(
         "${CI_COMMIT_BRANCH}-${DATE}"
         "${CI_COMMIT_BRANCH}"
+        "latest"
       )
     - IMAGE_NAME="$(echo ${DOCKERHUB_USER} | tr '[:upper:]' '[:lower:]')/${CI_PROJECT_NAME}"
   after_script:
