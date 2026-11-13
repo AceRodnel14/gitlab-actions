@@ -22,6 +22,12 @@ test_go:
 lint_node:
   extends: .lint_node
 
+lint_platformio:
+  extends: .lint_platformio
+
+test_platformio:
+  extends: .test_platformio
+
 lint_dockerfile:
   extends: .lint_dockerfile
 

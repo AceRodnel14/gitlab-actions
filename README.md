@@ -87,6 +87,7 @@ Wired into `app.yml` and `build_container_images_dockerhub.yml`; the `_all`,
 | `lint_python` / `test_python` | `*.py` / `tests/` or `test_*.py` | ruff check + format, pytest (uv) |
 | `lint_go` / `test_go` | `go.mod` | golangci-lint v2, `go test ./...` |
 | `lint_node` | `package.json` | `npm ci`, then `lint`, `typecheck`, `test`, `build` scripts if present |
+| `lint_platformio` / `test_platformio` | `platformio.ini` (`lint_all` only) | `pio check` (native env, high or medium defects fail), `pio test -e native`; PlatformIO pinned to `6.2.0` (`PLATFORMIO_VERSION` in `jobs/lint.yml`) |
 | `lint_dockerfile` | `Dockerfile*` | hadolint |
 | `lint_shell` | `*.sh` | shellcheck |
 | `lint_yaml` | `*.yml` / `*.yaml` | yamllint (repo `.yamllint` wins) |

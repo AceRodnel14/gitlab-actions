@@ -92,6 +92,42 @@
         done
       done
 
+# ===== PlatformIO (every platformio.ini; native env only: no board, no firmware build) =====
+.platformio_base:
+  extends: .lint_base
+  image:
+    name: ghcr.io/astral-sh/uv:python3.12-bookworm
+    entrypoint: [""]
+  variables:
+    PLATFORMIO_VERSION: "6.2.0"
+  rules:
+    - !reference [.never_on_github_sync, rules]
+    - if: *lint_when
+      exists: ['**/platformio.ini']
+  before_script:
+    - uv tool install "platformio==${PLATFORMIO_VERSION}"
+    - export PATH="$HOME/.local/bin:$PATH"
+
+.lint_platformio:
+  extends: .platformio_base
+  script:
+    - |
+      for ini in $(find . -name platformio.ini -not -path '*/.pio/*' | sort); do
+        dir=$(dirname "$ini")
+        echo "===== $dir ====="
+        pio check -d "$dir" -e native --skip-packages --severity=high --severity=medium --fail-on-defect=high --fail-on-defect=medium
+      done
+
+.test_platformio:
+  extends: .platformio_base
+  script:
+    - |
+      for ini in $(find . -name platformio.ini -not -path '*/.pio/*' | sort); do
+        dir=$(dirname "$ini")
+        echo "===== $dir ====="
+        pio test -d "$dir" -e native
+      done
+
 # ===== Containers =====
 .lint_dockerfile:
   extends: .lint_base
